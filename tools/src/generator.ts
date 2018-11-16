@@ -25,6 +25,7 @@ import generateComponent, {
   IProp
 } from "./component-generator";
 
+import generateBundlFile, { IFileImport } from "./bundle-file-generator";
 import { convertTypes } from "./converter";
 import { removeExtension, removePrefix, toKebabCase, uppercaseFirst } from "./helpers";
 import generateIndex, { IReExport } from "./index-generator";
@@ -41,6 +42,8 @@ function generate(
   }
 ) {
   const modulePaths: IReExport[] = [];
+  const allComponents: IFileImport[] = [];
+  const indexFileDir = getDirName(out.indexFileName);
 
   rawData.widgets.forEach((data) => {
     const widgetFile = mapWidget(
@@ -51,12 +54,37 @@ function generate(
       rawData.customTypes
     );
     const widgetFilePath = joinPaths(out.componentsDir, widgetFile.fileName);
-    const indexFileDir = getDirName(out.indexFileName);
 
     writeFile(widgetFilePath, generateComponent(widgetFile.component), { encoding: "utf8" });
     modulePaths.push({
       name: widgetFile.component.name,
       path: "./" + removeExtension(getRelativePath(indexFileDir, widgetFilePath)).replace(pathSeparator, "/")
+    });
+
+    const nesteds = [
+      {
+        importName: widgetFile.component.name,
+        componentName: toKebabCase(widgetFile.component.name)
+      }
+    ];
+    if (widgetFile.component.nestedComponents) {
+      widgetFile.component.nestedComponents
+        .filter((c) => {
+          const expectedName = uppercaseFirst(c.optionName);
+
+          return !c.name.endsWith(expectedName) || c.name === `Dx${expectedName}`;
+        })
+        .forEach((c) => {
+          nesteds.push({
+            importName: c.name,
+            componentName: toKebabCase(c.name)
+          });
+        });
+    }
+
+    allComponents.push({
+      path: `devextreme-vue/${removeExtension(widgetFile.fileName)}`,
+      imports: nesteds
     });
 
     writeFile(
@@ -70,6 +98,7 @@ function generate(
   });
 
   writeFile(out.indexFileName, generateIndex(modulePaths), { encoding: "utf8" });
+  writeFile(joinPaths(indexFileDir, "devextreme-vue.js"), generateBundlFile(allComponents), { encoding: "utf8" });
 }
 
 function mapWidget(
